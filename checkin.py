@@ -8,8 +8,7 @@ UA = os.getenv("UA")
 
 headers = {
     "cookie": f"koa:sess={KOA_SESS}; koa:sess.sig={KOA_SESS_SIG}",
-    "user-agent": UA,
-    "content-type": "application/json;charset=UTF-8"
+    "User-Agent": UA
 }
 
 # 签到请求
@@ -44,3 +43,4 @@ except Exception:
     sys.exit(6)
 
 print("[账户信息]", info)
+
