@@ -12,7 +12,6 @@ if not KOA_SESS or not KOA_SESS_SIG or not UA:
     print("Error: 缺少必要环境变量（KOA_SESS / KOA_SESS_SIG / UA）")
     sys.exit(1)
 
-# ====== 请求头（绝对不能有换行）======
 headers = {
     "Cookie": f"koa:sess={KOA_SESS}; koa:sess.sig={KOA_SESS_SIG}",
     "User-Agent": UA,
@@ -23,34 +22,43 @@ headers = {
 CHECKIN_URL = "https://glados.cloud/api/user/checkin"
 STATUS_URL = "https://glados.cloud/api/user/status"
 
+# ✅ 2026 适配：旧 token glados.one 可能会返回“please checkin via ...”
+CHECKIN_TOKEN = "glados.cloud"  # 关键修复点
+
 def post_with_retry(url, retries=3, timeout=30):
+    last_err = None
     for i in range(retries):
         try:
             return requests.post(
                 url,
                 headers=headers,
-                json={"token": "glados.one"},
+                json={"token": CHECKIN_TOKEN},
                 timeout=timeout
             )
-        except requests.exceptions.ReadTimeout:
+        except requests.exceptions.ReadTimeout as e:
+            last_err = e
             print(f"请求超时，第 {i+1}/{retries} 次重试...")
             time.sleep(2)
         except requests.exceptions.RequestException as e:
-            print("网络请求异常：", repr(e))
+            last_err = e
+            print(f"网络异常，第 {i+1}/{retries} 次重试... {repr(e)}")
             time.sleep(2)
-    raise RuntimeError("多次请求失败/超时，放弃")
+    raise RuntimeError(f"多次请求失败/超时：{repr(last_err)}")
 
 def get_with_retry(url, retries=3, timeout=30):
+    last_err = None
     for i in range(retries):
         try:
             return requests.get(url, headers=headers, timeout=timeout)
-        except requests.exceptions.ReadTimeout:
+        except requests.exceptions.ReadTimeout as e:
+            last_err = e
             print(f"请求超时，第 {i+1}/{retries} 次重试...")
             time.sleep(2)
         except requests.exceptions.RequestException as e:
-            print("网络请求异常：", repr(e))
+            last_err = e
+            print(f"网络异常，第 {i+1}/{retries} 次重试... {repr(e)}")
             time.sleep(2)
-    raise RuntimeError("多次请求失败/超时，放弃")
+    raise RuntimeError(f"多次请求失败/超时：{repr(last_err)}")
 
 print("开始签到...")
 
@@ -63,7 +71,6 @@ except Exception as e:
 print("HTTP 状态码:", checkin_resp.status_code)
 print("原始返回:", checkin_resp.text)
 
-# 解析 JSON
 try:
     result = checkin_resp.json()
 except Exception:
@@ -78,12 +85,12 @@ print("[签到返回]", "code =", code, "| message =", message)
 ok_keywords = [
     "Checkin! Got",                           # 签到成功
     "Checkin Repeats! Please Try Tomorrow",   # 今天已签到
+    "Repeats",                                # 有些脚本/返回会只带关键字
 ]
 
-if any(k.lower() in message.lower() for k in ok_keywords):
+if any(k.lower() in str(message).lower() for k in ok_keywords):
     print("[OK] 签到成功或今日已签到")
 else:
-    # 这里明确告诉你没签到成功，不再误判
     print("Error: 本次未签到成功（返回信息如下）：", message)
     sys.exit(1)
 
