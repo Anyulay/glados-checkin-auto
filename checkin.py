@@ -3,7 +3,7 @@ import sys
 import time
 import requests
 
-# ====== 读取并清洗环境变量（关键：去掉换行/空格）======
+# ====== 读取并清洗环境变量（去掉换行/空格）======
 KOA_SESS = os.getenv("KOA_SESS", "").strip()
 KOA_SESS_SIG = os.getenv("KOA_SESS_SIG", "").strip()
 UA = os.getenv("UA", "").strip()
@@ -19,12 +19,11 @@ headers = {
     "Accept": "application/json",
 }
 
-# ✅ 统一使用 glados.cloud（你已经被提示必须用这个）
+# ✅ 统一使用 glados.cloud
 CHECKIN_URL = "https://glados.cloud/api/user/checkin"
 STATUS_URL = "https://glados.cloud/api/user/status"
 
-def post_with_retry(url, retries=3, timeout=25):
-    """签到接口：超时自动重试"""
+def post_with_retry(url, retries=3, timeout=30):
     for i in range(retries):
         try:
             return requests.post(
@@ -41,8 +40,7 @@ def post_with_retry(url, retries=3, timeout=25):
             time.sleep(2)
     raise RuntimeError("多次请求失败/超时，放弃")
 
-def get_with_retry(url, retries=3, timeout=25):
-    """状态接口：超时自动重试"""
+def get_with_retry(url, retries=3, timeout=30):
     for i in range(retries):
         try:
             return requests.get(url, headers=headers, timeout=timeout)
@@ -59,35 +57,34 @@ print("开始签到...")
 try:
     checkin_resp = post_with_retry(CHECKIN_URL)
 except Exception as e:
-    print("Error:", e)
+    print("Error: 签到请求失败：", e)
     sys.exit(1)
 
 print("HTTP 状态码:", checkin_resp.status_code)
 print("原始返回:", checkin_resp.text)
 
-# 有些情况下可能返回非 JSON（比如被拦截/异常页），这里做保护
+# 解析 JSON
 try:
     result = checkin_resp.json()
 except Exception:
-    print("Error: 返回不是 JSON（可能被拦截或接口异常）")
+    print("Error: 签到接口未返回 JSON（可能被拦截/异常页）")
     sys.exit(1)
 
-message = result.get("message", "")
 code = result.get("code", None)
+message = result.get("message", "")
 print("[签到返回]", "code =", code, "| message =", message)
 
-# ✅ 只要是这些情况，都视为“正常完成”
+# ✅ 只把“真正签到成功/今天已签到”当成功
 ok_keywords = [
-    "Checkin! Got",                           # 签到成功（拿到点数/流量）
+    "Checkin! Got",                           # 签到成功
     "Checkin Repeats! Please Try Tomorrow",   # 今天已签到
-    "please checkin via https://glados.cloud" # 提示切换域名（现在我们已用 cloud）
 ]
 
 if any(k.lower() in message.lower() for k in ok_keywords):
-    print("[OK] 签到流程正常完成")
+    print("[OK] 签到成功或今日已签到")
 else:
-    # 如果 code==1 但文案变了，也别误判，打印出来方便你看
-    print("Error: 未识别的签到返回：", message)
+    # 这里明确告诉你没签到成功，不再误判
+    print("Error: 本次未签到成功（返回信息如下）：", message)
     sys.exit(1)
 
 print("获取账户信息...")
@@ -95,7 +92,7 @@ print("获取账户信息...")
 try:
     info_resp = get_with_retry(STATUS_URL)
 except Exception as e:
-    print("Warning: 获取账户信息失败（不影响签到）：", e)
+    print("Warning: 获取账户信息失败（不影响签到结果）：", e)
     print("脚本执行完毕")
     sys.exit(0)
 
